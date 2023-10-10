@@ -1,0 +1,153 @@
+---
+title: '771. Class 4 (9/18/23)'
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=4, fig.height=4, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+
+### Basic Monte Carlo (MC)
+
+
+MC is about trying to make the computer realize random variables
+$X_1, X_2,...,X_n$ that  `vary` according to some measure $P$, and then representing the 
+target quantity of interest as some property of $P$. Commonly, the target quantity is
+ $\mu = E_P[ g(X) ]$, for some function $g$, so that empirical averages $$\bar g_n = \frac{1}{n} \sum_{i=1}^n g(X_i)$$
+offer a valid approximation.  Ideally, `vary`  means  `i.i.d.`, and, if so, we have the law of 
+large numbers for justification, and the CLT for error.  There are other schemes, including Markov chain sampling (that we'll discuss later this semester), which eliminate the independence part, and quasi-MC, where points are more regular than random (not discussed).   
+
+We recall that random variables are mappings not numbers (an r.v. is something that becomes numerical
+when uncertainty about it is removed.)
+We recall two statements, the strong and weak versions of the law of large numbers (LLN) for i.i.d. sampling, when first moments are well defined:
+
+$$ P\left[  \lim_{n \rightarrow \infty} \bar g_n = \mu  \right] = 1 \qquad strong \quad (almost \, sure)$$
+
+$$ \lim_{n \rightarrow \infty}  P\left[  | \bar g_n - \mu  | > \epsilon \right]  = 0 \qquad \forall \epsilon >0 \qquad 
+weak \quad (in \, probability)$$
+
+Smiley face:  LLN
+
+frown face: CLT....error goes down very slowly
+
+In statistics, MC is used widely for:
+
+ - simulation to study sampling properties of a method [e.g. bias, power, coverage]
+
+ - methods for data analysis
+
+  * diagnostics
+
+  * p-values, confidence sets,
+
+  * anything involving conditional probability [e.g. Bayesian inference]
+
+
+
+#### Pseudo-random numbers:  
+
+Ideal random numbers exist only mathematically; we know of no constructive definition.  So instead we use deterministic schemes that produce numerical sequences that have the same relevant statistical 
+properties as truly random sequences.  Pseudo-random number generators are machines that
+exist in a certain finite state at any time point, and that encode updating rules to change this state and thus to return numbers that look like the realization of a random sequence.  From a given state (`seed`) it takes some number of steps to return to that same state; the maximal number of such steps is called the
+period of the generator.  Naturally, good generators have a long period.   E.g., the period of the Mersenne Twister (the default in R) is $2^{19937}-1$, far more than the number of atoms in the universe by some estimates!   In this case, the state (seed) entails 624 32-bit integers plus two other numbers indicating position
+information for the algorithm; the information is contained in R's `.Random.seed`.
+
+We note in class the idea that realized uniforms would have a relatively flat histogram (thanks LLN), and further that taken as pairs in the 
+unit square they would have an approximately flat 2-d histogram, and so on in multiple dimensions.   A property of the Mersenne Twister is that its histogram (if it could be computed over the entire period) and taken on a specific set of bins, is *exactly* uniform in all 
+dimensions up to 623.  Wow!  
+
+Good random number generators also pass statistical tests.  See the 
+[Diehard tests](https://en.wikipedia.org/wiki/Diehard_tests) for a standard in the field.
+
+In summary, pseudo-random numbers are numbers (not random variables) derived from a  deterministic algorithm and having the same *relevant statistical properties* as truly random sequences would have.
+
+#### On seeds
+
+The state of a pseudo-random number generator exists as a seed. R has simple ways to work with these
+seeds, e.g. using `set.seed`
+```{r echo=TRUE}
+set.seed(345)
+```
+
+The argument is up to you, and whatever it's value it sets R's internal seed, which for the Mersenne-Twister is a long vector of integers:
+```{r echo=TRUE}
+head(.Random.seed)
+```
+
+It's often good practice to set the seed at the beginning of any MC computation; then the resulting
+computations are nicely repeatable. E.g.
+
+```{r echo=TRUE}
+set.seed(77)
+
+rnorm(3)
+
+rnorm(3)
+
+set.seed(77)
+
+rnorm(3)
+```
+I.e. the last set of 3 realized normals matches the first, since we reset the seed.
+
+#### Uniforms
+
+It's an overstatement, but if we could make a pseudo-random number generator for the Uniform$[0,1]$ distribution, then we could get
+any other distribution $P$ by some conversion.  Three strategies for this conversion are: transformation, rejection, and composition.
+
+####  Transformation:   
+
+Note that conservation of probability is helpful in thinking about the distribution of transformed random variables. [for invertible and continously differentiable mappings $t(x)$, the density $f_Y(y)$ of $Y=t(X)$ satisfies $f_Y(y) \, dy = f_X(x) \, dx$ for infinitesimals $dx$ and $dy$; which gets  us the ordinary transformation rules involving the Jacobian of $t$.
+
+If $U\sim$Uniform$[0,1]$, then, e.g., $X=\log(1/U) \sim$Exponental$(1)$. [Use the rules of probability, monotonicity of the transform, and equality of events $[X \leq x]$ and $[U \geq u]$ when $x=\log(1/u)$  More generally $X=F^{-1}(U) \sim F$ if $F$ is the c.d.f. of a univariate distribution and $F^{-1}(u) = \inf\{ x: F(x) \geq u \}$.   
+
+We also discuss this generalized inverse for discrete random variables. We remember that every r.v. has a c.d.f., that is continuous from the right and has limits from the left (*cadlag*, from the French, continous a droit, limites a gauche [and missing the accents!])
+
+
+e.g. 1: This explicit inversion for normals is also how `rnorm` works internally.
+
+```{r echo=TRUE}
+u <- runif(10^4)
+z <- qnorm(u)
+hist(z, 100, prob=TRUE)
+s <- seq(-3,3,by=.01)
+lines( s, dnorm(s), col='red', lwd=2 )
+```
+
+e.g. 2: The Box-Mueller method is a classical (though now not standard) transformation scheme
+for making two i.i.d. standard normals from two i.i.d. Uniform$(0,1)$ variables $U_1, U_2$. First,
+$Rsq=2\log(1/U_1)$ has a Chi-square distribution on 2 degrees of freedom (by transformation; this is
+a mean-2 exponential); and further $\Theta=2\pi U_2$ is Uniform on $(0,2\pi)$.  Now we view $Rsq$ and 
+$\Theta$ as polar coordinates of cartesian coordinates $Z_1$ and $Z_2$, whose density may be confirmed
+to be i.i.d. standard normal.
+
+```{r echo=TRUE}
+
+bm <- function(n)
+ {
+  # a simple Box-Mueller
+  count <- 0
+  z <- NULL
+  notdone <- TRUE
+  while(notdone)
+   {
+    u <- runif(2)
+    Rsq <- 2*log(1/u[1])
+    Theta <- 2*pi*u[2]
+    z1 <- sqrt(Rsq) * cos(Theta)
+    z2 <- sqrt(Rsq) * sin(Theta)
+    z <- c( z, z1, z2 )
+    count <- count+ 2
+    notdone <- (count<n)
+   }
+   return( z[1:n] )
+  }
+
+hist( bm(10000), 100, prob=TRUE )
+lines( s, dnorm(s), col='red', lwd=2 )
+```
+
+

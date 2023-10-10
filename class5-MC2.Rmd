@@ -1,0 +1,340 @@
+---
+title: '771'
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=4, fig.height=4, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+### Basic Monte Carlo (MC), continued
+
+#### 9/20/23, Class 5
+
+#### On simulating a joint distribution
+
+Last time we introduced the probability integral transform, by which a uniformly distributed
+random variable is converted so as to have any non-uniform distribution, utilizing that distribution's
+inverse c.d.f.   This is a useful and durable approach, though it may not be the most
+compute efficient, and so below we discuss two other general procedures: rejection and composition.
+
+First we comment on the simulation of a joint distribution, say of two random variables $(U,V)$. 
+Take the finite/discrete case, and so a matrix $p_{U,V}(u,v)$ over possible value pairs $(u,v)$ 
+holds the joint probabilities. This discrete case holds the essential strategy.  Row sums of this matrix gives the marginal distribution $p_U(u)$,
+and renormalizing any one row gives conditionals, such as $p_{V|U}(v|u) = p_{U,V}(u,v)/p_U(u)$.
+
+Consider the following two-step algorithm: first make a random draw from $p_U$, then make
+a draw from the conditional $p_{V|U}$, fixing the first draw.   I claim the resulting pair is a draw from the joint distribution.
+
+The proof is mainly in recognizing what distributions are involved.  In an attempt to not confuse
+the notation, let $\tilde U$ and $\tilde V$ label the random draws created from the two step 
+algorithm.  The question is whether $(\tilde U, \tilde V)$ has the joint distribution 
+prespecified as $p_{U,V}$.   
+
+\begin{eqnarray*}
+P\left[ \tilde U=u , \tilde V = v \right] &=& P\left[ \tilde U=u \right] \, P\left[ \tilde V=v | \tilde U=u \right] \\
+&=& p_U(u) \, p_{V|U}(v|u) = p_{U,V}(u,v) \\
+&=& P\left[  U=u ,  V = v \right] \\
+\end{eqnarray*}
+
+####  Rejection sampling  
+
+We go through the argument in steps
+
+a.  Uniform on a set $A$:  We discuss what it means for $X$ (a random vector)  to be uniform over a set in Euclidean space:  $P[ X \in B ]=volume(A \cap B)/volume(A)$, for a set $A$ of positive Euclidean volume.
+
+b.   One example is $A=\{ (x,y):  x \in R \,  \&  0 <= y <= h(x) \}$ for an envelope function $h$ that is non-negative and integrable.  Claim: If $U=(X,Y)$ is Uniform on $A$, then marginally, $X$ has density proportional to $h(x)$. This provides another way to view a p.d.f., as defining an area (or volume) by which uniform sampling projects a marginal given by the envelope.
+
+c.  Uniform on a subset $B\subset A$: **repeat-until:** If $X_1, X_2, \cdots \sim_{iid}$Uniform$(A)$ , set, then $N=\min\{ n: X_n \in B\}$ is a geometric random variable, and $Y = X_N$ is Uniform on $B$. To prove this, write $$P(Y \in C)=\sum_{n=1}^\infty P\left[X_n \in C, X_1 \in B^c, X_2 \in B^c \cdots, X_{n-1} \in B^c \right]$$, use the independence of basic draws, and solve the sum.
+
+
+d.  Suppose that $f(x)$ is a target density that we'd like to be able to simulate. Suppose
+ further that  we can find some other density function $g(x)$ such that for some $1 < c < \infty$: $f(x) \leq c g(x) \quad \forall x$. Now say $A=\{(x,y): x \in R, \; 0 \leq y \leq c g(x) \}$. In practice $g$ is easy to simulate from. The algorithm is: 
+
+**Repeat:**
+  
+  generate $X_n \sim g$
+
+  generate $Y_n \sim$Uniform$(0, c g(X_n) )$
+
+**Until:**  $Y_n \leq f(X_n)$
+
+**Return:**  $X_N$ (the value of $X_n$ when the condition is met.)
+
+By the steps above $(X_n,Y_n)$ is uniform on $A$ (i.e. under the outer envelope), and the 
+repeat-until makes $(X_N,Y_N)$ uniform on $B=\{(x,y): x \in R, \; 0 \leq y \leq f(x) \}$; then $X_N$ has the marginal density $f$ by projection.
+
+ 
+This algorithm makes sense when $f$ is hard to simulate but a $g$ can be found that is easy to simulate and that also can be scaled to tightly upper bound $f$.  If $c$ is much bigger than one then the algorithm spends a lot of time creating and then throwing away candidate $X_n$'s.  You may check that $c$ affects the distribution of the stopping time $N$.
+
+Example (added to notes): Consider a Beta$(a,b)$ density for $a, b \geq 1$, and so with density
+$$f(x) = k x^{a-1} (1-x)^{b-1}$$ for $k=\Gamma(a+b)/\Gamma(a)\Gamma(b)$.  By calculus on the log
+of $f$, you can show that $f(x) \leq f(x^*)$ where $x^* = (a-1)/(a+b-2)$.   Take $g(x)=1$ for
+$x \in (0,1)$ the uniform density, and inflation constant $c=f(x^*)$.
+
+```{r}
+
+aa <- 4
+bb <- 2
+xstar <- (aa-1)/(aa+bb-2)
+
+supp <- seq(0,1,length=50)
+ff <- dbeta(supp, shape1=aa, shape2=bb)
+
+cc  <-dbeta(xstar,shape1=aa,shape2=bb)
+gg <- cc*rep(1,length(supp))
+
+plot( supp, ff, type="l", xlab="x", ylab="density" , las=1 )
+lines( supp, gg, col="red" )
+
+```
+
+And here's the rejection algorithm at work:
+
+```{r}
+
+nsamp <- 10^4
+xx <- numeric(nsamp)
+for( isamp in 1:nsamp )
+ {
+   ## do one draw
+   notdone <- TRUE
+   while(notdone)
+    { 
+     x <- runif(1)      ## draw from envelope
+     y <-  cc*runif(1)  ## unif between 0 and envelope
+     notdone <- ( y > dbeta(x, shape1=aa,shape2=bb) )
+    }
+   xx[isamp] <- x
+ }
+hist(xx,prob=TRUE)
+lines( supp, ff, col="red" )
+
+
+```
+
+Rejection may or may not involve an envelope function, as the following example shows:
+
+Example:  Standard normals by rejection via Marsaglia's polar method.  This method uses rejection
+to convert uniform samples over the square $[-1,1]^2$ into uniform samples on the unit disc. Then
+the radius and the angle are readily identified from the coordinates $U_1,U_2$ (and better yet, no
+trig is necessary!).
+
+```{r echo=TRUE}
+
+polarbm <- function(n)
+ {
+  count <- 0
+  z <- NULL
+  notdone <- TRUE
+  while(notdone)
+   {
+    outside <- TRUE
+    while( outside )
+     {
+      u <- runif(2,min=(-1),max=1)
+      T <- sum(u^2)
+      outside <- (T>1)
+      }
+    # so T <= 1
+    tmp <- sqrt((2/T)*log(1/T))
+    z1 <- tmp*u[1]
+    z2 <- tmp*u[2]
+    z <- c( z, z1, z2 )
+    count <- count+ 2
+    notdone <- (count<n)
+   }
+  return(z[1:n])
+ }
+
+hist( polarbm(10^4), 100, prob=TRUE )
+s <- seq(-3,3,by=.01)
+lines( s, dnorm(s), col='red', lwd=2 )
+
+```
+
+Example (added to notes):  There's a nice interpretation of Bayesian posterior sampling from 
+the perspective of rejection sampling, which I'll ask you to explore in homework.
+
+
+#### Composition 
+
+The idea here is that we can simulate a joint distribution of the pair $(X,Y)$ by first generating
+$Y$ from its marginal and then by generating $X$ from its conditional distribution given $Y=y$.  Then ignoring $Y$, the output $X$ comes from a marginal distribution $f$, which may have been hard to simulate  directly,  but which can be rigged up to be the marginal (and the target distribution)  corresponding to the pair $(X,Y)$.
+
+We mention the Poisson-Gamma model as an example.  Here $Y|X=x$ has a Poisson distribution with mean $\lambda x$, for some parameter $\lambda$, and then $X$ has a Gamma$(\alpha,\alpha)$ distribution.   
+*Extra calculation*: work out the negative binomial margin  by going through the Gamma integration.
+
+
+Often the *mixing* distribution $Y$ is discrete, as in the Marsaglia-Bray algorithm for the standard
+normal:
+
+Example: Standard normals by  composition via Marsaglia-Bray; here $Y$ is a simple 4-valued random
+ variable.  It takes advantage of the idea that the sum of 2 or 3 iid uniforms starts to look
+bell shaped. Then it uses rejection sampling on a third component to get the right shape in the main part of the distribution, and finally a relatively expensive transform for the tails, which occurs with
+low probability. In early R versions this was the default normal generator.
+
+
+```{r echo=TRUE}
+
+# auxiliary function
+g3 <- function(x)
+ {
+  aa <- 17.49731196
+  bb <-  4.73570326
+  cc <-  2.15787544
+  dd <-  2.36785163
+  y <- abs(x)
+  if(y<1){ val <- aa*exp(-y^2/2) - bb*(3-y^2)-cc*(1.5-y) }
+  else if( y>=1 & y <1.5 ){ val <- aa*exp(-y^2/2)-dd*(3-y)^2 -cc*(1.5-y) }
+  else if( y >= 1.5 & y < 3 ){ val <- aa*exp(-y^2/2)-dd*(3-y)^2 }
+  else{ val <- 0 }
+  return(val)
+ }
+
+# main Marsaglia-Bray
+mb <- function(n)
+ {
+  z <- numeric(n)
+  a1 <- 0.8638
+  a2 <- 0.1107
+  a3 <- 0.0228002039
+  a4 <- 1-a1-a2-a3
+  for( i in 1:n )
+   {
+    u <- runif(1)
+    if( u <= a1 ){ z[i] <- 2*sum(runif(3)) - 3 }
+    else if( u <= a1+a2 ){ z[i] <- 1.5*sum(runif(2)) - 1.5 }
+    else if( u <= a1+a2+a3 )
+      {
+       ok <- TRUE
+       while(ok)
+         {
+           x <- 6*runif(1)-3
+           y <- 0.358*runif(1)
+           ok <- (y < g3(x) )
+         }
+       z[i] <- x
+      }
+    else
+      {
+       ## sample the tails using more expensive method
+       aa <- runif(1)
+       if( aa <= 1/2 ){ ss <- 1; aa <- 2*aa }
+       else{ ss <- -1; aa <- 2*aa - 1 }
+       aa <- pnorm(-3) * aa/2
+       x <- qnorm(abs(aa))
+       z[i] <- ss*x
+       }
+    }
+  return(z)
+ }
+
+## Try it
+hist( mb(10^4), 100, prob=TRUE )
+s <- seq(-3,3,by=.01)
+lines( s, dnorm(s), col='red', lwd=2 )
+```
+
+Here's a look at the components of the Marsaglia Bray mixture.
+
+```{r}
+## largest part is sum of 3 uniforms
+
+s3 <- function(x)
+ {
+  # density of sum of 3 standard uniforms
+  den <- 0
+  if( x > 0 & x <= 1 ){ den <- x^2/2 }
+  if( x > 1 & x <= 2 ){ den <- (-x^2 + 3*x - 3/2 ) }
+  if( x > 2 & x <= 3 ){ den <- (x-3)^2/2 }
+  den
+ }
+
+f3 <- function(z){ (1/2)*s3( (z+3)/2 ) } ## density of (2S-3)
+f3.v <- Vectorize(f3)
+
+supp <- seq(-4,4, length=100 )
+
+d1 <- f3.v( supp )    ##  density of first component [convolution of 3 uniforms]
+dtarget <- dnorm(supp)
+
+## second part is sum of two
+
+s2 <- function(x)
+ {
+  # density of sum of 2 standard uniforms
+  den <- 0
+  if( x > 0 & x <= 1 ){ den <- x }
+  if( x > 1 & x <= 2 ){ den <- 2-x }
+  den
+ }
+
+f2 <- function(z){ (2/3)*s2( z*2/3 + 1 ) } ## density of (3/2)( S-1 )
+f2.v <- Vectorize(f2)
+d2 <- f2.v( supp ) 
+
+
+# Marsaglia Bray mixing weights
+ a1 <- 0.8638
+ a2 <- 0.1107
+ a3 <- 0.0228002039
+# a4 <- 1-a1-a2-a3
+
+d12 <- d1*a1 + d2*a2
+
+## Bring in the difference determined by Marsaglia and Bray
+
+g3 <- function(x)
+ {
+  aa <- 17.49731196
+  bb <-  4.73570326
+  cc <-  2.15787544
+  dd <-  2.36785163
+  y <- abs(x)
+  if(y<1){ val <- aa*exp(-y^2/2) - bb*(3-y^2)-cc*(1.5-y) }
+  else if( y>=1 & y <1.5 ){ val <- aa*exp(-y^2/2)-dd*(3-y)^2 -cc*(1.5-y) }
+  else if( y >= 1.5 & y < 3 ){ val <- aa*exp(-y^2/2)-dd*(3-y)^2 }
+  else{ val <- 0 }
+  return(val)
+ }
+
+g3.v <- Vectorize(g3)
+
+
+## so now mix 3
+yl <- range(d2)
+xa <- -1.2
+ya <- .9*yl[2]
+
+d123 <- d12 + a3*g3.v(supp)
+
+par( mfrow=c(2,2), mar=rep(1,4), oma=c(0,0,3,0) )
+plot( supp, d1, type="l", lwd=2, col="red" , ylim=yl)
+lines( supp, dtarget, lwd=2, col="black" )
+text( xa, ya, "Z1=2(U1+U2+U3) - 3" )
+
+plot( supp, d2, type="l", lwd=2, col="magenta" , ylim=yl)
+lines( supp, dtarget, lwd=2, col="black" )
+text( xa, ya, "Z2=1.5(U1+U2) - 1" )
+
+plot( supp, g3.v(supp), type="l", lwd=2, col="blue" , ylim=yl)
+lines( supp, dtarget, lwd=2, col="black" )
+text( xa, ya, "Z3 from remainder density" )
+
+plot( supp, dtarget*(abs(supp)>3)/(2*pnorm(3,lower.tail=FALSE) ),
+	 type="l", lwd=2, col="grey" , ylim=yl)
+lines( supp, dtarget, lwd=2, col="black" )
+text( xa, ya, "Z4 from tail" )
+
+mtext(outer=TRUE, "Marsaglia Bray" )
+```
+
+
+
+#### Reference:
+
+Thomas, Luk, Leong, 2007. ACM Computing Surveys, Vol. 39, No. 4, Article 11 
+ [Gaussian random number generators](https://dl.acm.org/citation.cfm?id=1287622)

@@ -1,0 +1,481 @@
+---
+title: "771: On Singular Value Decomposition"
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=4, fig.height=4, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+
+### Numerical linear algebra II: SVD
+
+This is the first big idea for constructing low-dimensional representations of data. It also arises in a variety of
+regression and multivariate analysis computations.
+
+
+Recall that for a vector $x \in R^p$, the length of $x$ is $|x| = \sqrt{ x^T x }$.
+
+For an $n \times p$ matrix $X$ [e.g. a data matrix], there are some useful facts that help us find low dimensional representations.  To see these, first note that the size of  matrix may be measured variously.  E.g. the Frobeneous norm is
+ 
+$$|| X ||_F = \sqrt{ \sum_{j,k} X_{j,k}^2}$$, 
+
+and the $L_2$ norm is 
+
+$$|| X ||_2 = \max_{ v: v^T v = 1} | Xv |$$
+
+for $p-$vectors $v$.  This norm is related naturally to *singular* vectors as follows.
+
+Define the first right singular vector $v_1$ of $X$ to be 
+
+$$\argmax_{v:  v^T v = 1}  | Xv |$$
+
+i.e. it's that vector associated with the $L_2$ norm of $X$. The first singular
+ value, denoted $\sigma_1$ is the maximal value $|X v_1 |$ and the first
+left singular vector $u_1$ is the unit vector in $R^n$ in the direction of $X v_1$,
+and so $u_1 = Xv_1/\sigma_1$, or equivalently $X v_1 = \sigma_1 u_1$.
+
+We can similarly define second, third, and so on singular vectors and values, though
+in the optimization to maximize $| X v |$ we constrain not only to unit vectors
+$v^T v=1$, but we also require these vectors to be orthogonal to previously 
+identified (right) singular vectors.  I.e.  
+
+$$v_2 = argmax_{v: v^T v=1; v^T v_1 = 0}  | Xv |$$
+
+Notice we are immediately faced with questions about the rank of the matrix $X$.  Whatever this rank, $r$, it must be $1 \leq r \leq p$.
+Suppose that this rank $r=1$.   Then every column of $X$ is a multiple of some 
+fixed vector, and in fact we may write $X$ as the outer product
+
+$$X = \sigma_1 u_1 v_1^T$$
+
+noting that every column in $X$ is a multiple of the vector $u_1$, with specific multiples in $v_1$.  We can check by right-multiplying by $v_1$ to get the defining relation for the first singular vectors.   Then if we attempt to find the 2nd singular vectors for such a rank-1 $X$ we find 
+
+$X v = \sigma_1 u_1 v_1^T v = 0$   for all $v$ that are perpendicular to $v_1$, hence there is no $v_2$ to solve the optimization [and $\sigma_2=0$].
+
+By such reasoning, and noting the $\sigma_j$'s are maximal lengths subject to ever greater restrictions, we 
+have $\sigma_1 \geq \sigma_2 \geq \cdots \geq \sigma_r > \sigma_{r+1} = \cdots = \sigma_p = 0$. The singular values are non-negative, non-increasing, and equal to 0 after $r$ values.
+
+The construction gives us orthonormal right singular vectors $v_1, v_2, \cdots v_p$, non-increasing singular values $\sigma_1, \cdots, \sigma_p$, and normalized left singular vectors $u_1, u_2, \cdots, u_p$ in $R^n$.    
+
+We may take a moment to think about dimensions $n$ and $p$.  So far they are unconstrained; but note that $X$ has $p$ columns and so
+its rank must not exceed the minimum of $n$ and $p$.
+
+*Claim:* the left singular vectors are orthonormal.
+
+The claim relies in part on showing that there's a simpler way to construct the singular vectors; simpler in the sense that one does not require explicit inclusion of orthogonality constraints in the optimization.
+
+Introduce the $n \times p$ `residual' matrix  $B = X - \sigma_1 u_1 v_1^T$.  First note that $B v_1 = 0$ by construction.  Next note that when we seek the first singular vector for $B$ we get $v_2$, the second singular vector for $X$, even though we did not impose the explicit orthogonality constraint.  To see why let $z$ be this vector, $z = \argmax_{v: v^T v=1} |Bv|$. Both $z$ and $v_1$ are points in $R^p$.  If they are orthogonal, then $z$ must be $v_2$, since for any $v$
+orthogonal to $v_1$, $|Bv| = |Xv - \sigma_1 u_1 v_1^t v| = |Xv|$; and so maximizing $|Bv|$ among
+orthogonals to $v_1$ also maximizes $|Xv|$ in this restricted set (which defines $v_2$).   But what if $z$ is not orthogonal to $v_1$? Is this possible?  If so, then the projection of $z$ onto $v_1$ would be a non-zero vector $z_1$ proportional to $v_1$ (of length in $(0,1)$). and we could consider for $h = (z-z_1)/|z-z_1|$
+
+$$|Bh| = (1/|z-z_1|) |Bz - Bz_1| = (1/|z-z_1|) |Bz| > |Bz|$$
+
+with the last equality because $Bz_1 \propto Bv_1 = 0$ and the inequality because $|z-z_1| < 1$ by Cauchy-Schwartz.   But since $z$ is supposed to be the first singular vector of $B$ it must make maximal length among projected unit vectors, and so this is a contradiction.  
+
+We omit this from class presentation, but fyi, the matrix $B$ is useful in an induction argument to prove that $u_1, u_2, ..., u_p$ are orthogonal.  Omitting the base case (n=1), suppose $u_2, u_3,...,u_p$ are orthogonal (and so we've got orthogonality of the left singular vectors of $B$) and we need to prove orthogonality of the left singular vectors of $X$. This means we need to prove that $u_1^T u_i= 0$ for $i=2,\cdots, p$.  Suppose it's not for some $i$, and suppose further that the inner product is positive (negative case comparable).  Let $v* = ( v_1 + \epsilon v_i )/| v_1 + \epsilon v_i |$  for an arbitrarily small $\epsilon > 0$.  Look at 
+$$u* : = X v* = ( X v_1 + \epsilon X v_i )/| v_1 + \epsilon v_i |$$
+
+and note that the denominator is $(1 + \epsilon^2 )^{(1/2)}$,  and so
+
+$$u*  = Xv* = ( \sigma_1 u_1 + \epsilon \sigma_i u_i )/(1+\epsilon^2)^{(1/2)}$$
+
+Now the length of this $n$ vector, $|Xv*|$ must exceed the length of its projection onto $u_1$ by Cauchy-Schwartz, which gives
+
+$$|X v*| \geq u_1^T(   \sigma_1 u_1 + \epsilon \sigma_i u_i )/\sqrt(1+\epsilon^2)$$
+
+$$= (\sigma_1 + \epsilon \sigma_i u_1^T u_i )/\sqrt( 1+\epsilon^2 )$$
+
+$$= \sigma_1 + \epsilon \sigma_i u_1^T u_i + O(\epsilon^2)$$
+
+which exceeds $\sigma_1$ for sufficiently small $\epsilon$, which is a contradition, since $\sigma_1$ is the largest value of lengths of projected vectors.  Thus the projection length $u_1^T u_i = 0$, and the orthogonality is established.
+
+(Aside: pedagogically, it's perhaps good to work through the case $p=2$, so we just are confirming that $u_2$ is orthogonal to $u_1$
+by the construction; and also confirming that the orthogonality constraint of $v_k$ to earlier $v_j$ disappears when looking at residuals..)
+
+What are some implications of the *singular value decomposition*?   For any $n \times p$ matrix $X$ of rank $r$, we have orthonormal $v_1, \cdots, v_p$,  $u_1, \cdots, u_p$ and non-increasing singular values $\sigma_1, \cdots, \sigma_p$, with $\sigma_{r+1}= ... = \sigma_p=0$, such that 
+
+$$X = \sum_{j=1}^r  \sigma_j u_j v_j^T$$
+
+In matrix notation, this is $X = U D V^T$ where
+
+either (a)   $U$ has orthonormal columns, and is dimensioned $n x p$,  like $X$,  $D$ is $p x p$ diagonal with $\sigma$'s on diag, and $V$ is $pxp$ orthogonal
+
+ or    (b)   $U$ is orthogonal $n x n$, $D$ is `diagonal` $n x p$, and $V$ is $p x p$ as above.
+
+The latter is sometimes called the `full' SVD.
+
+Note that we can truncate the SVD to get a rank $k$ approximation to $X$
+
+$$\hat{X}= \sum_{j=1}^k \sigma_j u_j v_j^T$$
+
+It happens that this is the best rank $k$ approximation, in terms of various
+matrix norms.   For example $|| X - \hat{X}||$ is the  same as after applying
+orthogonal transforms $U^T$ on the left and $V$ on the right, to get
+
+$$|| D - U^T \hat{X} V ||$$
+
+The Frobeneous norm involves just a sum of squared diagonal terms, with the largest
+in the upper left, and so dropping off the bottom of that list is the best way to reduce that norm.
+
+
+Consider the following simple example to see the improving approximation:
+
+```{r echo=TRUE}
+# a look at the singular value decomposition of a data matrix
+
+n <- 10
+p <- 4
+
+# a random matrix
+
+set.seed(345)
+
+X <- matrix( rnorm(n*p), n , p )  # synthetic data matrix
+
+s <- svd(X)
+
+cls <- rev( rainbow(256, start=0, end=2/3 ) )
+
+s1 <- s$d[1] * s$u[,1] %o% s$v[,1]
+
+s2 <- s$d[1] * s$u[,1] %o% s$v[,1] + 
+      s$d[2] * s$u[,2] %o% s$v[,2]
+
+s3 <-  s$d[1] * s$u[,1] %o% s$v[,1] + 
+       s$d[2] * s$u[,2] %o% s$v[,2] +
+       s$d[3] * s$u[,3] %o% s$v[,3] 
+
+s4 <-  s$d[1] * s$u[,1] %o% s$v[,1] + 
+       s$d[2] * s$u[,2] %o% s$v[,2] +
+       s$d[3] * s$u[,3] %o% s$v[,3] + 
+       s$d[4] * s$u[,4] %o% s$v[,4] 
+
+## here is data (left) and ever rank-increasing approximations
+
+par( mfrow=c(1,5), mar=c(1/2, 1/2,4,1/2) )
+image( t(X), col=cls , axes=FALSE, main="X")
+image( t(s1), col=cls, axes=FALSE, main="s1" )
+image( t(s2), col=cls, axes=FALSE, main="s2" )
+image( t(s3), col=cls, axes=FALSE, main="s3" )
+image( t(s4), col=cls, axes=FALSE, main="s4" )
+```
+
+And the Frobeneous norms for various rank approximations:
+
+```{r}
+err <- c( sum( (X-s1)^2 ), sum( (X-s2)^2 ), sum( (X-s3)^2 ), sum( (X-s4)^2 ) )
+names(err) <- c('rank 1', 'rank 2', 'rank 3', 'rank 4' )
+print( round( err, 4 ) )
+```
+
+#### How is the svd computed
+
+
+Consider a completely different problem, to find the fixed point $x^*$ of a
+functions, such as $f(x) = 1 + 1/x$ for $x>0$, where a point is a fixed point when
+$f(x^*) = x^*$.   
+
+```{r}
+## A fixed point iteration example
+
+f <- function(x){ 1 + 1/x }   ## an interesting function
+
+xx <- seq(1,2,length=50)
+plot( xx, f(xx), type="l" )
+
+# find the "fixed point", i.e. x.star s.t. f(x.star)=x.star
+
+x.star <- 1 # a starting guess
+notdone <- TRUE
+tol <- 10^(-7)
+while( notdone )
+ {
+  print(x.star)
+  err <- abs(f(x.star)-x.star)
+  points(x.star,f(x.star), pch=19, col="red" )
+  x.star <- f(x.star)
+  notdone <- !( err < tol )
+ }
+abline(0,1)
+
+abline( h=(1+sqrt(5))/2, col="blue" )
+abline( v=(1+sqrt(5))/2, col="blue" )
+```
+
+One approach to compute `svd` is to find eigenvalues and eigenvectors of the
+symmetrized matrices $X^t X$ or $X X^t$.   Taking the former, and using the mathematical SVD,
+let us define $A = X^t X = V D^2 V^t$, where, again, $V$ is $p \times p$, holding the right
+singular vectors, and simultaneously, the eigenvectors of $A$.  We recall that an
+eigenvector $v$, say associated with eigenvalue $\lambda$, satisfies $A v = \lambda v$; further,
+this $v$ is a fixed point of the function $f(x) = Ax/|Ax|$ over unit vectors $x$.  The code
+below shows one example.
+
+
+```{r}
+##
+## Here we show one way to construct the SVD of an n times p matrix X by using the
+## power method to get eigenvectors of the p x p sample covariance matrix
+
+n <- 10
+p <- 4
+
+# a random matrix, for demonstration
+
+set.seed(345)
+X <- matrix( rnorm(n*p), n , p )  # synthetic data matrix
+
+
+# center, so each column has mean zero
+X.center <- as.matrix( scale(X, center=TRUE, scale=FALSE ) )
+
+# Sample covariance
+A <- t(X.center) %*% X.center /n
+
+## set up components of the SVD
+
+V <- matrix(NA,p,p)  # will hold right singular vectors of X.center
+V[,1] <- matrix( rnorm(p), p, 1 ) # random start
+U <- matrix(NA,n,p) ## will hold left singular vectors of X.center
+sigma <- rep(NA,p) ## will hold singular values
+
+## let's get eigenvectors of A by power method [which corresponds to right singular vectors]
+j <- 1
+for( i in 1:100 ) ## or iterate until some convergence
+ {
+  tmp  <- c( A %*% V[,j] )
+  V[,j] <- tmp/sqrt( sum(tmp*tmp) )
+ }
+
+bar <- c(X.center %*% V[,j])
+sigma[j] <- sqrt( sum(bar*bar) )
+U[,j] <- bar/sigma[j]
+
+# go to second singular vector
+
+Resids <- X.center - sigma[1]* U[,1] %*% t( V[,1] )
+A <- t( Resids ) %*% Resids/n
+j <- 2
+V[,j] <- matrix( rnorm(p), p, 1 ) # random start
+for( i in 1:100 ) ## or iterate until some convergence
+ {
+  tmp  <- c( A %*% V[,j] )
+  V[,j] <- tmp/sqrt( sum(tmp*tmp) )
+ }
+bar <- c(X.center %*% V[,j])
+sigma[j] <- sqrt( sum(bar*bar) )
+U[,j] <- bar/sigma[j]
+
+## and now a third
+
+Resids <- X.center - sigma[1]* U[,1] %*% t( V[,1] ) - sigma[2]*U[,2] %*% t( V[,2] )
+A <- t( Resids ) %*% Resids/n
+j <- 3
+V[,j] <- matrix( rnorm(p), p, 1 ) # random start
+for( i in 1:100 ) ## or iterate until some convergence
+ {
+  tmp  <- c( A %*% V[,j] )
+  V[,j] <- tmp/sqrt( sum(tmp*tmp) )
+ }
+bar <- c(X.center %*% V[,j])
+sigma[j] <- sqrt( sum(bar*bar) )
+U[,j] <- bar/sigma[j]
+
+
+# and one last
+
+Resids <- X.center - sigma[1]* U[,1] %*% t( V[,1] ) - sigma[2]*U[,2] %*% t( V[,2] ) - sigma[3]*U[,3] %*% t( V[,3])
+A <- t( Resids ) %*% Resids/n
+j <- 4
+V[,j] <- matrix( rnorm(p), p, 1 ) # random start  
+for( i in 1:100 ) ## or iterate until some convergence
+ {
+  tmp  <- c( A %*% V[,j] )
+  V[,j] <- tmp/sqrt( sum(tmp*tmp) )
+ }
+bar <- c(X.center %*% V[,j])
+sigma[j] <- sqrt( sum(bar*bar) )
+U[,j] <- bar/sigma[j]
+
+
+### Compare our hand calculation above to the output of "svd"
+
+
+s <- svd(X.center)
+
+# e.g. 
+print( cbind( sigma, s$d ) )
+
+## to check
+## you could also get the u's first by working out eigenvectors of the Gram matrix X X^t  [first centered]
+
+```
+
+The functional iteration used above is not the same as the approach coded into `svd`, though
+that approach also uses functional iteration, but it relies on special `Givens` rotations.  
+Check Lange's book for more details.
+
+*The following was not discussed in class*
+
+#### Applications 
+
+SVD has many applications in statistics. Among them are
+
+1.  Principal components analysis (PCA)
+2.  Ridge regression
+3.  Multi-dimensional scaling
+4.  Reduced rank regression.
+
+
+Let's look into PCA.  To demonstrate, consider that $X$ is $n x 2$, and show a sketch
+of the $n$ points in the plane, say centered so the column means are both 0.
+Take any line going through the origin.  We can ask two questions about the line.
+
+1.  what line minimizes the total perpendicular squared distance from points
+    to the line?
+
+2.  what line maximizes the variance of points on the line projected perpendicularly
+    from the original points?
+
+It turns out both answers are the same, and they are related to the SVD of $X$.
+To see how we need another diversion.
+
+Let $\Sigma$ denote a $p\times p$ positive definite symmetric matrix, that is the
+covariance matrix of some random vector $Z$ in $R^p$.   Consider linear combinations
+$v^T Z$, and ask what vectors $v$ maximize the variance of the linear combination.
+To be well defined, let's restrict to unit vectors, so we are looking for directions
+that maximize the variance.  
+
+We see this is the constrained optimization var$( v^T Z ) = v^T \Sigma v$
+ subject to $v^T v = 1$, which corresponds to the Lagrange-multiplier objective function
+
+$$g(v) = v^T \Sigma v + \gamma (1- v^T v)$$
+
+differentiating in $v$ gives
+
+$$g'(v) = 2 \Sigma v - 2\gamma v$$ 
+
+and setting to zero gets $\Sigma v = \gamma v$
+
+I.e. the direction $v$ yeilding the maximal variance of linear combinations of
+components of $Z$ is the direction of an eigenvector v of $\Sigma$; further 
+consideration shows for maximization this must be the eigenvector corresponding
+to the largest eigenvalue $\gamma$.
+
+Now back to data $X$; after centering, the sample covariance matrix [rows as 
+sample points] is  $(1/n) X^T X$, and from the SVD, this is 
+$(1/n) V D^2 V^T$ (see first aside above). So we see that the eigenvalues of this matrix are
+the squared (normalized by $1/n$) singular values of $X$, and the eigenvectors
+are the right singular vectors of $X$.  These are called the principal components.
+
+We see in a toy example how the SVD  consitutes an orthogonal rotation of the data.  In the
+new coordinate system, the first dimension has maximal variance; in the second dimension the errors are minimized
+(best rank-1 approx).
+
+Principal components are widely used in applied statistics.   They provide a method of 
+dimension reduction, though sometimes they are difficult to interpret.   In genomics, they
+are often used to represent information about population structure.  See, e.g.
+
+[Genes mirror geography within Europe](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2735096/)
+
+### Distances and multi-dimensional scaling (MDS)
+
+
+  Let's take a slightly different perspective on the SVD,
+and from our $n \times  p$ data
+   matrix $X$ consider all the $n^2$ pairwise differences between the rows [units].
+Let $x_i^T$ denote the ith row of $X$, and consider the squared Euclidean distance
+
+$$\delta_{i,j} = (x_i - x_j)^T (x_i - x_j),$$ 
+
+and let $\Delta = \Delta(X) = ( \delta_{i,j} )$ be the $n \times  n$ matrix of these
+ distances.  Often the data $X$ will be given, but in some applications 
+ the raw data are already pairwise distances between observations.  This is
+ all that is needed for MDS.
+
+ The basic goal of MDS is to *embed* the observations in a low dimensional
+ space.   Classical MDS, in particular, aims to find an $n \times 2$ (usually) 
+ matrix $Y$ s.t.  $\Delta(Y)$ is approximately equal to $\Delta(X)$.   Finding
+ this, we could plot $Y$ and know that the inter-point distances approximate
+   those of our input data, which may be high dimensioned.  Any interesting patterns that we see in the 2-d plot (e.g. clusters) might reflect important patterns from the higher-dimensional data.  You can imagine that unless $X$ lives on some hyperplane in $R^p$, $\Delta(Y)$ will not be 
+   exactly $\Delta(X)$ for $p > 2$;  there will be some loss of precision in
+   representing the pairwise distances. 
+
+Now classical MDS works with the so-called Gram matrix $X X^T$, which is 
+$n \times n$ and which contains all inner products $x_i^T x_j$.  Clearly $\Delta(X)$
+is computable from the Gram matrix.  Curiously, when the columns of $X$ are centered
+on 0, we may also recover the Gram matrix from the squared distances, using the *double-centering* transformation:
+
+$$X X^T = \frac{-1}{2}  H \, \Delta(X) \, H$$
+
+where $H=I_n - \frac{1}{n} 1 1^T$, and where $1$ stands for a length$-n$ vector of
+1's. (checking this is part of homework).  Restated, the goal is to find an $n \times 2$ matrix $Y$ for which $Y Y^T$ is close to $X X^T$.  From last class, we know that the Frobenius norm of the difference is minimized (over rank-2 matrices) by taking $Y[,1] = \sigma_1 U[,1]$ and 
+$Y[,2] = \sigma_2 U[,2]$, where these $\sigma_j$'s and $U[,j]$'s come from the singular value decomposition of $X=U D V^T$.   I.e., taking $Y$ proportional to the first two left singular of $X$ does the trick.
+
+
+We notice also that one need not (and MDS code does not) proceed by getting the SVD of $X$; rather it gets a decomposition of the Gram matrix (which is computed using double centering from the input squared distances).   Since $X X^T$ is symmetric it has a spectral decomposition $\Gamma K \Gamma^T$, for orthogonal $\Gamma$ and diagonal $K$ (eigenvectors and eigenvalues, respectively).  Mathematically we can check that $\Gamma=U$ and $K=D^2$ from the SVD of $X$. In summary there are two options that produce the same result:
+
+1.  Construct Gram matrix from the double-centering transform of the input squared distance matrix;  get its spectral decomposition and take the first two eigenvectors, scaled by the square root of the first two eigenvalues.
+
+2. Construct an SVD of the column-centered data matrix; and report singular-values-scaled copies of the first two left singular vectors 
+
+
+As an aside, we note that PCA was concerned with the $p \times p$ sample covariance $(1/n) X^T X$ while the MDS is concerned with the $n \times n$ Gram matrix $X X^T$; both utilize the SVD. 
+
+*about the non-uniqueness of $Y$ and rotations...*
+
+```{r echo=TRUE}
+
+# toy example
+
+n <- 100; p <- 5
+
+set.seed(234)
+
+X <- matrix(rnorm(n*p),n, p)
+X2 <- t( t(X) - colMeans(X) ) # column centered
+
+s <- svd(X2)  # singular value decomposition
+
+xv <- s$u %*% diag( s$d )
+
+top2 <- xv[,1:2]  # first 2 left singular vectors, scaled by singular values
+
+## Classical MultiDimensional SCALEing
+
+dd <- dist( X2 )  ## inter-row distances
+cc <- cmdscale(dd)
+
+## notice that cc is the same as top2!
+
+par(mfrow=c(1,2))
+plot( cc[,1], top2[,1] ); plot( cc[,2], top2[,2] ) 
+```
+Of course, the orthogonal columns are not uniquely determined, since multiplying any by (-1) retains 
+orthogonality.
+
+
+Try the calculation by hand, without `cmdscale`:
+
+```{r echo=TRUE}
+
+
+A <- X2 %*% t(X2)  # Gram matrix
+
+one <- rep(1,n)
+H <- diag(n) - (1/n) * one %*% t(one)
+
+Del <- as.matrix( dist(X2) )^2  # squared Euclidian distances
+
+B <- (-1/2)*H %*% Del %*% H   # double centering 
+
+ss <-svd(B) ## spectral decomposition of B
+uu <- ss$u %*% diag( sqrt(ss$d) )
+
+head( round(uu[,1:2],3) )
+
+#compared to 
+head( round(cc,3) )
+
+```

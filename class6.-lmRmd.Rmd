@@ -1,0 +1,359 @@
+---
+title: "771 Class 6"
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=4, fig.height=4, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+### Monday 2023-09-25
+
+### Numerical linear algebra I: 
+
+We recall the central problem of linear regression.    We  have a design matrix $X$  [or predictors, covariates,
+ features] that is $n \times p$, and a response vector $y$.  Say the $j$th
+column of $X$ is $x_j$.  We view $y$ as the realization of the random $Y$, which in linear regression we could assume follows
+
+$$ Y \sim  Normal_n[ \eta = X \beta , \sigma^2 I_n ] $$
+
+for a $p \times 1$ regression parameter $\beta$ and a common variance $\sigma^2$;
+$\eta$ is the $n \times 1$ vector of `linear predictors`,
+ to borrow ahead a term from generalized linear models.
+
+Suppressing $\sigma^2$, the likelihood $Lik(\beta) \propto \exp\{ -S(\beta)/(2\sigma^2) \}$ where $S(\beta)$ is the sum of squares $(y-X \beta)^T (y- X \beta)$.
+
+Vector calculus shows quickly the so-called OLS estimator
+[and of course = argmax $Lik(\beta)$ , for any $\sigma^2$ ], must satisfy the
+`normal equations`
+
+$$(X^T X) \hat \beta  = X^T y$$
+
+Special cases:  
+
+1. $p=1$,  $\hat \beta = x_1^T y/( x_1^T x_1 )$
+ 
+2. $X$ has orthogonal columns; then $\hat \beta_j = x_j^T y/( x_j^T x_j)$
+
+In general it seems we can get $\hat \beta$ by inverting $(X^T X)$ and
+ left-multiplying the normal equations, but this is not how computations usually proceed.
+That approach is susceptible to numerical error and may be compute intensive.
+
+We recall the Cholesky factorization of a symmetric positive definite matrix $A=L L^T$, and solving systems with forwardsolve $(Lx=b)$
+and backsolve $(L^Tx=b)$.  (We mention there is an induction argument
+ to prove the existence of such and $L$, which is invertible as long as $A$ is p.d.).  
+
+There are multiple approaches to solve the normal equations.  We review the mathematics in the first
+two cases:
+
+
+1.  Cholesky decompose $X^T X$ into $L L^T$ for a lower-triangular $L$ 
+Solve $L v = X^T y$ for $v$ by forwardsolve. Then solve $L^T \hat \beta=v$
+    by backsolve.  we mention that *lm* does not work this way (in part, it requires $X^T X$ to be positive definite).
+
+2.  QR decompose $X=QR$ for an $n \times p$ matrix $Q$ with orthogonal columns, and an upper-triangular $R$.
+	 Cancel $R^T$ off both sides (by multiplying on the left by its inverse), then find $\hat \beta$
+    using backsolve on $R \hat \beta = Q^T y$.
+
+3.  Sweep (not discussed).
+
+
+### A useful orthogonal transformation
+
+Before switching to code, we review a  fact about unit vectors, say $a$  and $b$ are two unit vectors in $d-$dimensional Euclidean space, and $I$ is 
+the $d \times d$ identity matrix, then we consider the transform $H = I - 2 v v^T$, where $v$ is the unit vector proportional to $a - b$.
+By some basic algebra, we show $H a = b$.   That is, we can readily construct a `reflection` transform that can take any given vector
+$a$ into any other given vector $b$.   Taking $b$ to be a unit vector defining a coordinate axis provides a way to zero out entries of 
+the input, which we will find useful in the following.  We also note some properties of $H$, such as symmetry and invertibility.
+
+### QR decomposition
+
+We work through three code examples to decompose a synthetic data matrix $X$.
+
+Recall that vectors are orthogonal if their inner product is zero; 
+vectors are orthonormal if they are orthogonal and
+ their lengths are 1.  An $n \times n$ matrix is 
+orthogonal if it's $n$ columns are orthonormal.
+
+#### Gram-Schmidt
+
+```{r echo=TRUE}
+
+n <- 10
+p <- 4
+
+# a random example
+set.seed(47)
+X <- matrix( rnorm(n*p), n, p )
+options(digits=2)  ## simpifies look on print
+
+Z <- matrix(NA, n, p)  ## to be populated
+G <- matrix(0, p,p)
+diag(G) <- 1
+
+Z[,1] <- X[,1]
+
+## regress X[,2] on Z[,1]
+G[1,2] <- sum( Z[,1]*X[,2] )/sum( Z[,1]^2)
+## take residuals
+Z[,2] <- X[,2] - G[1,2] * Z[,1]
+
+# notice that Z[,1] and Z[,2] are orthogonal
+
+sum( Z[,1] * Z[,2] )
+
+```
+
+Continuing,
+
+```{r echo=TRUE}
+
+## regress X[,3] on Z[,1] and Z[,2] 
+G[1,3] <- sum( Z[,1]*X[,3])/sum( Z[,1]^2 )
+G[2,3] <- sum( Z[,2]*X[,3] )/sum( Z[,2]^2 )
+## take the residuals
+Z[,3] <- X[,3] - G[1,3]*Z[,1]-G[2,3]*Z[,2]
+
+## notice orthogonality of columns, but not normalized...
+round( t(Z) %*% Z , 3 )
+```
+
+```{r echo=TRUE}
+# continue
+G[1,4] <- sum( X[,4]*Z[,1])/sum( Z[,1]^2)
+G[2,4] <- sum( X[,4]*Z[,2])/sum( Z[,2]^2 )
+G[3,4] <- sum( X[,4]*Z[,3])/sum( Z[,3]^2 )
+Z[,4] <- X[,4] - G[1,4]*Z[,1]-G[2,4]*Z[,2]-G[3,4]*Z[,3]
+
+## check that Z has orthogonal columns (but not normalized)
+## check that Z %*% G = X
+
+## make normalized version of Z , and likewise adjust G
+
+dd <- diag( t(Z) %*% Z )
+
+Q <- t( t(Z)/sqrt(dd) )   ## check t(Q) %*% Q is I_p
+                          ## though not with collinear case
+
+R <- sqrt(dd) * G   ## check that R is still upper triangular, and Q %*% R=X
+
+
+round(R,2)  # upper triangular
+
+max( abs( t(Q) %*% Q - diag(p) ) ) ## orthogonal
+
+max( abs( X - Q %*% R ) )   ## QR decomposition
+
+```
+
+Alternatively, use the built-in decomposition method:
+```{r echo=TRUE}
+## check out the qr function
+
+out <- qr(X)   ## compare qr.Q(out) with Q and qr.R(out) with R
+               ## not the same, suggesting that X=QR is not unique
+round( qr.R(out), 3 )
+
+round( qr.Q(out), 3 )
+
+```
+
+Note the two decompositions are not  the same, suggesting that $X=QR$ is not unique (even the dimensions of $Q$ and $R$ are up to discussion!) But further, Gram-Schmidt is not the only way to find $Q$ and $R$.
+
+
+#### Householder
+
+Here's another way to orthogonalize an input matrix $X$.
+
+```{r echo=TRUE}
+
+
+A <- X
+alpha <- sqrt( sum( A[,1]^2 ) )
+ee <- c( 1, rep(0, nrow(A)-1 ) )
+
+u <- A[,1] - alpha*ee
+v <- u/sqrt( sum(u^2) )
+Q1 <- diag(n) -  2 * v %*% t(v)   ## t(Q) %*% Q is I column looking good
+
+p1 <- Q1 %*% X
+
+round(p1,3)
+```
+
+Notice that $Q1$ is orthogonal  [easy to check mathematically too] and
+the projection $p1$ (which is the projection of $X$ by $Q1$) entails zeros
+below the diagonal in the first column. This is caused by the Householder 
+reflection of the first column about $v$. We continue on sub-matrices:
+
+```{r echo=TRUE}
+A <- p1[2:n,2:4]  
+alpha <- sqrt( sum( A[,1]^2 ) )
+ee <- c( 1, rep(0, nrow(A)-1 ) )
+u <- A[,1] -alpha*ee
+v <- u/sqrt( sum(u^2) )
+Q2 <- diag(n)
+Q2[2:n,2:n] <- diag(n-1) -  2 * v %*% t(v)   ## t(Q) %*% Q is I
+p2 <- Q2 %*% Q1 %*% X
+
+## third column
+A <- p2[3:n,3:4]  
+alpha <- sqrt( sum( A[,1]^2 ) )
+ee <- c( 1, rep(0, nrow(A)-1 ) )
+u <- A[,1] -alpha*ee
+v <- u/sqrt( sum(u^2)  )
+Q3 <- diag(n)
+Q3[3:n,3:n] <- diag(n-2) -  2 * v %*% t(v)   ## t(Q) %*% Q is I
+p3 <- Q3 %*% Q2 %*% Q1 %*% X
+
+## fourth column
+A <- p3[4:n,4:4]  
+alpha <- sqrt( sum( A^2 ) )
+ee <- c( 1, rep(0, length(A)-1 ) )
+u <- A -alpha*ee
+v <- u/sqrt( sum(u^2) )
+Q4 <- diag(n)
+Q4[4:n,4:n] <- diag(n-3) -  2 * v %*% t(v)   ## t(Q) %*% Q is I
+p4 <- Q4 %*% Q3 %*% Q2 %*% Q1 %*% X
+
+
+Q <- t(Q1) %*% t(Q2) %*% t(Q3) %*% t(Q4)
+R <- p4
+
+round(R,3)
+
+max( abs( t(Q) %*% Q - diag(n) ) )
+
+max( abs( Q%*%R - X ) )
+
+```
+The sequence of Householder transformations has thus created a QR 
+decomposition of $X$.
+
+See also [](http://fourier.eng.hmc.edu/e176/lectures/NM/node10.html)
+
+#### Givens
+
+We do not study this one in class, but 
+consider the following orthogonal transformation of a 2x2 matrix:
+
+
+```{r echo=TRUE}
+set.seed(312345126)
+
+A <- matrix( rnorm(4), 2,2 )
+
+round(A,3)
+
+rr <- sqrt( A[1,1]^2 + A[2,1]^2 )
+cc <- A[1,1]/rr
+ss <- A[2,1]/rr
+
+G <- rbind( c( cc, -ss), c(ss, cc) )
+
+B <- t(G) %*% A
+
+round(B,3)
+```
+
+You may check that $G$ is orthogonal. We observe that this transform of the
+original $A$ has forced a zero in the (2,1)-cell.   We may also embed this
+operation into a larger transformation.
+
+
+
+```{r echo=TRUE}
+
+givens <- function(alpha,beta)
+ {
+  rr <- sqrt( alpha^2 + beta^2 )
+  cc <- alpha/rr
+  ss <- beta/rr
+  return( list( c=cc, s=ss ) )
+}
+
+Giv <- function(m,i,j,giv)
+ {
+  G <- diag(m)
+  cc <- giv$c; ss <- giv$s
+  G[i,i] <- cc; G[j,j] <- cc
+  G[i,j] <- -ss; G[j,i] <- ss   
+  G
+ }
+
+## eg
+
+A <- rbind( c( 0.8147 , 0.0975, 0.1576 ),
+            c( 0.9058 , 0.2785, 0.9706 ),
+            c( 0.1270, 0.5469, 0.9572 ),
+            c( 0.9134, 0.9575, 0.4854 ),
+            c( 0.6324, 0.9649, 0.8003 ) )
+
+cs <- givens( A[4,1], A[5,1] )
+G1 <- Giv(5,4,5,cs)
+
+A1 <- t(G1) %*% A
+
+round(A1,2)
+```
+
+Now we can continue to zero-out elements.
+For example
+
+```{r echo=TRUE}
+
+cs <- givens( A1[3,1], A1[4,1] )
+G2 <- Giv(5,3,4,cs)
+A2 <- t(G2) %*% A1
+
+round(A2,2)
+```
+
+
+Let's see how this works on the $X$ defined previously. We'll march
+through the entire sub-diagonal of $X$.
+
+
+
+```{r echo=TRUE}
+
+qrgiv <- function(X)
+ {
+  n <- nrow(X); p <- ncol(X)
+  Q <- diag(n)
+  R <- X
+  for( j in 1:p )
+   {
+    sq <- seq( n, j+1, by=-1 )
+    for( i in sq )
+     {
+       cs <- givens( R[i-1,j], R[i,j] )
+       GG <- Giv(n,i-1,i, cs)
+       R <- t(GG) %*% R
+       Q <- Q %*% GG
+     }
+    }
+   return( list(Q=Q, R=R) ) 
+ }
+
+
+tmp <- qrgiv(X)
+
+# check
+
+round( tmp$R, 2)                   ### upper triangular
+
+max( abs( t(tmp$Q) %*% tmp$Q  - diag(n)) )   ### orthogonal
+
+max( abs( X - tmp$Q %*% tmp$R ) )   ## X=QR
+
+```
+
+
+Presently, `R` uses Householder transformations to compute the QR decomposition.
+We also note that even matching dimensions, there is not a unique factorization of a given input matrix $X$, though
+for full rank $X$ the differences will only pertain to signs of entries.  All algorithms aim to assure that the
+output $Q$ with orthonormal columns and upper-triangular  $R$ satisfy $X=QR$ for the input $X$.  
+

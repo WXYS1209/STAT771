@@ -1,0 +1,370 @@
+---
+title: "771 Class 1"
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.height=6, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+### Wednesday  2023-09-06
+
+Welcome to Stat 771, Computational Statistics.
+
+### Semester plan.
+
+Introductions,  student work, assessment, learning outcomes, textbooks, syllabus and other course information....what we're going to try to do this semester!
+
+  
+We talked about various computation systems and that we're demonstrating things in R and 
+RStudio this term.
+  
+Next we did a short overview of examples of issues with finite-precision arithmetic.
+
+### Being careful with numbers.
+
+E.g. Numbers in R
+
+
+```{r}
+options(digits=8)
+10
+```
+
+```{r}
+1/10
+```
+
+R is good with infinities
+
+```{r}
+1/0
+```
+
+```{r}
+1+Inf
+```
+
+```{r}
+Inf-Inf
+```
+
+But R uses finite-precision arithmetic, and is necessarily limited in how it represents numbers. For example, small positive numbers have to be larger than a fixed lower limit.
+
+```{r}
+1/1000000 > 0
+
+1e-100 > 0
+
+1e-300 > 0
+
+1e-400 > 0
+```
+
+It may seem that such a small number won't come up in routine statistics, but there are many situations where these do (e.g. likelihood calculations).
+
+R is also limited in the size of big numbers.
+
+```{r}
+10^10 < Inf
+10^300 < Inf
+10^400 < Inf
+```
+The 64-bit precision confers about 18 decimal digits, and so there is imprecision beyond that. For example
+
+```{r}
+options(digits=20)
+pi
+factorial(5)
+factorial(23)
+```
+The first and last of these clearly differ from the mathematical objects.
+
+These precision limitations affect routine computations, and so we need to keep them in mind. For example, the following computes the likelihood for the mean parameter $\mu$ of a normal model (with known variance 1), for a random sample.
+
+```{r}
+L <- function(mu,dat)
+ {
+  tmp <- dnorm(dat, mean=mu)
+  bar <- prod(tmp)
+  return(bar)
+}
+
+
+
+# an example data set
+data(PlantGrowth)
+tmp <- PlantGrowth[,1] 
+x1 <- tmp[PlantGrowth[,2]=="ctrl"]
+
+
+L(4, dat=x1)
+L(5, dat=x1)
+
+
+
+```
+
+To look at the whole likelihood function for either data set, let's work on a grid
+
+```{r}
+mu.grid1 <- seq(3,7,length=100)
+```
+
+and vectorize the likelihood evaluator to handle all grid values at once
+
+```{r}
+Lv <- Vectorize(L,vectorize.args="mu")
+
+lik1 <- Lv(mu.grid1, dat=x1)
+```
+
+All's fine in the first data example
+
+```{r}
+
+plot( mu.grid1, lik1, type="l")
+abline( v=mean(x1), col="red") ## the MLE
+rug(x1,col="blue")
+```
+
+but underflow has killed the second case
+
+```{r}
+data(treering)
+x2 <- treering
+
+mu.grid2 <- seq(0,2,length=100)
+lik2 <- Lv(mu.grid2, dat=x2)
+
+
+plot( mu.grid2, lik2, type="l" )
+rug(x2,col="blue")
+```
+We avoid the underflow by working with log likelihoods.
+
+```{r}
+l <- function(mu,dat)
+ {
+  tmp <- dnorm( dat, mean=mu, log=TRUE )
+  bar <- sum( tmp )
+  return(bar)
+ }
+
+lv <- Vectorize(l, vectorize.args="mu" )
+
+loglik1 <- lv( mu.grid1, dat=x1 )
+loglik2 <- lv( mu.grid2, dat=x2 )
+
+plot( mu.grid1, loglik1, type="l")
+abline( v=mean(x1), col="red")
+rug(x1,col="blue")
+
+plot( mu.grid2, loglik2, type="l")
+abline( v=mean(x2), col="red")
+rug(x2,col="blue")
+
+```
+
+Here we're using raw computing to get at what math would tell us is the sample mean.
+Underflow affected the previous example, and we see the scale of log probability densities (negative thousands in example 2) gets us well below log(1e-400) investigated above.   We can run into related problems even when the numbers involved are not near the limit of precision.  For example
+
+```{r}
+options(digits=8)
+v <- c(1, 1e-20)
+v[1]
+v[2]
+v[1]+v[2] > v[1]
+```
+The problem here is that the mathematical value requires more significant digits than are available in base R.
+
+When working with small positive numbers, say $a_1, a_2, \cdots, a_n$, we often use the logarithmic scale to record intermediate computations.   For example, suppose we wish to resolve $S = \sum_{i=1}^n a_i$, and since we know it's the sum of small numbers and likely to be small, we will be happy to compute $\log(S)$.  Further, we are working with $a_i$'s on the log scale, and have in the computer $b_i = \log(a_i)$.  Naively, (for a test set of logged numbers in the vector b), we could do
+
+```{r echo=TRUE}
+b <- dnorm( x1, mean=50, log=TRUE ) # example
+ans <- log(sum(exp(b)))
+ans
+```
+but underflow has affected the inner expectation, which is avoided in the following <i> log-sum-exp trick </i>:
+
+```{r echo=TRUE}
+m <- max(b)
+ans2 <- m + log(sum(exp(b-m)))
+ans2
+```
+The log-sum-exp trick is based on simple math you can verify. Manipulating sums of small numbers often happens in Bayesian and mixture model computations, which we'll learn more about later.
+
+We note that advances have been made in software that tricks a fixed-precision system into having higher precision.  In R, you may like to check out the <i> Rmpfr </i> package to see how this goes.  Here are two examples that correct the imprecision of base R noted above.  
+
+```{r echo=TRUE}
+library(Rmpfr)
+Pi <- Const("pi", prec=260)
+Pi
+
+factorialMpfr(23)
+```
+
+These high-precision numbers look better than what we got from the defaults.
+
+
+A nice thing about <i> Rmpfr </i> is that we can use the high-precision numbers 
+ to check the accuracy of various computational schemes. For example, let's check
+the accuracy of `log` and the function `log1p` which aims to more accurately compute $\log(1+x)$ when the magnitude of $x$ is very small (and thus were $\log$ is subject to underflow).
+  The plot first looks at the relative error of `log`.
+
+
+```{r echo=TRUE}
+library(Rmpfr)
+
+powers<- seq(13,17, length=100)
+
+x <- 1/10^powers
+
+x. <- mpfr(1, precBits=256)/10^powers
+
+a <- log( 1+x )
+aa <- log1p( x )
+
+a.  <- log( 1+ x. )
+aa. <- log1p( x. )
+## a. and aa. are very close; either may be considered the `truth`
+
+# relative error
+
+re1 <- (a - a.)/a.
+re2 <- (aa - aa.)/aa.
+
+plot( powers, re1 , main="error in log(1+x); x=10^[-power]",
+		ylab="relative error" )
+lines( powers, re2, col="red", lwd=2 )
+legend( "bottomleft", legend=c("log1p(x)"), lwd=2, col="red" )
+```
+
+So `log1p` is much more acccurate than `log` for certain arguments.  If we zoom in, we see that `log1p` too is in error, but at a much lower level:
+
+
+```{r echo=TRUE}
+plot( powers, re2, main="error in log1p(x); x = 10^[-power]",
+		ylab="relative error" )
+abline( h=0 )
+```
+
+
+Here are another curious example using pseudo-random numbers (we'll learn a lot more about
+these things going forward)
+
+```{r echo=TRUE}
+B <- 10^4
+ok <- logical(B)
+
+for( b in 1:B )
+ {
+  u <- runif(3)
+  left <- (u[1]+u[2])*u[3]
+  right <- u[1]*u[3] + u[2]*u[3] 
+  ok[b] <- left == right
+ }
+ 
+print( mean(ok) )
+
+```
+It seems that the distributive law isn't always obeyed by finite-precision arithmetic!
+Indeed, we know that when checking for equality we really ought to check that differences
+are smaller than some pre-specified positive tolerance.
+
+If we use high-precision numbers, the distributive law holds, thankfully!
+
+```{r echo=TRUE}
+B <- 1000
+ok <- logical(B)
+for( b in 1:B )
+ {
+  u <- runif(3)
+  u. <- mpfr(u, precBits=100 )
+  left <- (u.[1]+u.[2])*u.[3]
+  right <- u.[1]*u.[3] + u.[2]*u.[3] 
+  ok[b] <- left == right
+ }
+
+print(mean(ok))
+```
+You may notice that the cost of working in high-precision is computer speed!  It's much
+slower to compute (so I reduced `B` in this case).
+
+
+Here's a final example (not covered in class), which exemplifies a well-known issue with
+finite-precision arithmetic that we lose precision when taking differences between numbers
+of similar magnitude.
+
+
+
+```{r echo=TRUE}
+library(Rmpfr)
+
+powers<- seq(13,17, length=100)
+
+mu <- 10^powers
+n <- length(powers)
+
+set.seed(7) 
+e1 <- rnorm(n)
+e2 <- rnorm(n)
+
+x <- mu+e1  ## these are vectors of numbers where each x_i is relatively close to y_i
+y <- mu+e2
+
+x. <- mpfr(mu, precBits=512 ) +  mpfr(e1, precBits=512) ## high-precision versions
+y. <- mpfr(mu, precBits=512 ) +  mpfr(e2, precBits=512)
+
+a <- x-y     
+a. <- x.-y. 
+
+# relative error
+
+re1 <- (a - a.)/abs(a.)
+
+plot( mu, a. , main="true differences x.-y.", log="x" )
+```
+
+The plot above shows the `true` (i.e. high-precision) deviations `a=x-y` as a function of
+the underlying means.  Below shows computed differences, followed by an overlay plot which
+shows for large `mu` that errors start to creep in.
+
+```{r echo=TRUE}
+plot( mu, a , main="computed differences x-y", log="x" )
+```
+
+```{r echo=TRUE}
+plot( mu, a. , main="",  log="x" )
+points( mu, a, pch=19, col="red" )
+```
+
+And the relative error
+```{r echo=TRUE}
+plot( powers, re1 , main="error in difference", ylab="relative error" )
+```
+
+
+
+
+
+### some references
+
+* [Knut Martin Mørken's notes on round-off](https://www.uio.no/studier/emner/matnat/math/MAT-INF1100/h08/kompendiet/round-off.pdf)
+
+* [Wikipedia](https://en.wikipedia.org/wiki/Round-off_error)
+
+* What Every Computer Scientist Should Know About Floating-Point Arithmetic
+[Goldberg, D, 1991](https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html)
+
+* FAQs from CRAN
+[See section 7.31](https://cran.r-project.org/)
+
+* R Multiple Precision Floating Point Reliable 
+ [Rmpfr](https://cran.r-project.org/web/packages/Rmpfr/index.html)
+
+* Nice R notes from [Phil Spector](https://www.stat.berkeley.edu/~spector/Rcourse.pdf)
+
+* A clear tutorial on R numbers by [Patrick Burns](http://www.burns-stat.com/documents/tutorials/impatient-r/more-r-key-objects/more-r-numbers/)

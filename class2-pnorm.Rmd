@@ -1,0 +1,414 @@
+---
+title: "771 Class 2"
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.height=6, fig.path='Figs/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+
+### Monday 2023-09-11
+
+## More basics
+
+It's important for us to have some understanding how common statistical procedures
+are computed and also what common approaches are available in standard and non-standard
+settings. 
+
+
+### Normal tail areas
+
+We often need to compute tail probabilities in a standard normal distribution.  In
+the old days students did this by looking in tables at the back of a book (but someone had to
+make the book!); nowadays
+we use `pnorm` in `R`, or something comparable in other systems.   We seek to compute,
+for inpute $x$, the numerical value
+
+$$ P( Z \leq x ) = \int_{-\infty}^x \phi(y) \, dy$$
+
+where $\phi(y) \propto \exp( -y^2/2 )$ is the standard bell curve.   There's no
+closed formula for this probability, sometimes called $\Phi(x)$.    There are many ways to 
+compute $\Phi(x)$, for instance:
+
+```{r}
+
+x <- 1.96
+p <- 1/2 + integrate(dnorm, lower=0, upper=x )$value
+p
+
+```
+
+The built-in `integrate` function deploys a numerical method that we'll investigate later, but
+we note `pnorm` does not involve an explicit integration.
+
+
+
+### Continued fractions
+
+We recall the golden ratio $g = 1+1/g = (1+\sqrt{5})/2$. This number has interested thinkers
+for thousands of years; two line segments in this ratio have the property that the longer over the
+shorter equals the longer plus the shorter over the longer.   By repeated substitution:
+
+$$ g = 1/[1+1/[1+1/[1+1/[1+1/[1+...]]]]] $$
+
+We also recall (without proof, but with amazement) that Laplace
+established a continued fraction for the Mill's ratio $R(t) = [1-\Phi(t)]/\phi(t)$.
+
+In particular
+
+$$ R(t) = 1/[t+1/[t+2/[t+3/[t+4/[t+5/[t+...]]]]]]   $$
+
+We note that a nice **recursion** forms by truncating this expansion.  For instance
+if we truncate at level 5; e.g. with input $t=1.96$,
+
+```{r echo=TRUE}
+t <- 1.96
+
+d <- t
+d <- t+5/d
+d <- t+4/d
+d <- t+3/d
+d <- t+2/d
+d <- t+1/d
+
+millsRatio <- 1/d
+
+pnormapprox <- 1-dnorm(t) * millsRatio
+
+pnormapprox
+
+```
+This agrees to four decimal places with `pnorm`.
+
+
+#### Expand the integrand and integrate term by term
+
+Recalling the expansion  $e^u=1+u+u^2/2+...$, we get, for $x>0$, 
+
+$$ \Phi(x) = 1/2 + \sum_{m=0}^\infty (-1)^m  x^{(2m+1} /( (2^m) (m!) (2m+1) )   $$
+
+By truncating this sum at some big number $B$ we have a ready approximation. 
+Though this suffers from being an alternating series, and later terms have large numerators and denominators,  and is thus subject to substantial round-off error.  It's not the basis of `pnorm`.
+
+#### Taylor expand $g(x) = [ \Phi(x) - 1/2 ]/\phi(x) ]$
+
+We check that $g(-x) = -g(x)$ (i.e., $g$ is odd), and then leverage that $g$ must
+therefore have an expansion around zero in odd powers of $x$:
+
+$$ g(x) = \sum_{m=0}^\infty c_m x^{2m+1}  $$
+
+We then do a bit of work to identify the coefficients, finding 
+
+$$ c_m = [ (2m+1)!! ]^{-1}  $$
+
+where the double factorial sign means product of odd terms down to 1.   Well now
+we have a nice positive term series for $g$, which we can readily truncate to get
+an approximation of $g$ and then $\Phi$  
+
+**Note:**  it happens here and in many cases elsewhere that a probability density is
+ readily evaluated but corresponding probability masses are very difficult to 
+ compute.
+
+This overcomes the errors due to the alternations in the first Taylor expansion, but
+it's still not the preferred method.  
+
+
+
+#### Chebychev
+
+In fact `pnorm` uses none of the methods reviewed above, but rather uses an
+algorithm coded by Cody (1969) that is based upon a special rational-function
+Chebyshev approximation.   Cody approximates the so-called *error function*, a simple
+transform and close relative of $\Phi$ using a ratio of two finite polynomials with
+known (i.e. computed by Cody) coefficients.    His paper claims high accuracy of
+the approximation over a wide range of input $x$.
+
+
+[Rational Chebyshev Approximations for the Error Function, 
+By W. J. Cody; Math. Comp. 23 (1969), 631-637](http://www.ams.org/journals/mcom/1969-23-107/S0025-5718-1969-0247736-4/)
+
+
+It turns out that the favored algorithm for computing `qnorm`, i.e. the quantiles of 
+the standard normal, is also based on Chebyshev approximations, though different
+polynomials are involved.
+
+[Wichura, M. J. (1988) Algorithm AS 241: The percentage points of the normal distribution. Applied Statistics, 37, 477–484.](http://www.jstor.org/stable/2347330?seq=1#page_scan_tab_contents)
+
+#### some example computations
+
+
+```{r echo=TRUE}
+# Some code to look at two power series and two continued fraction
+# approximations to normal cumulative probability.
+
+# taylor expand density then integrate
+taylor1 <- function(x,n)
+ {
+   nn <- 0:n
+   u <- (-1)^nn * x^(2*nn+1) / ( factorial(nn) * 2^nn * (2*nn+1) )
+   u <- u/sqrt(2*pi)
+   u
+ }
+
+# a positive term expansion
+taylor2 <- function(x,n)
+ {
+   nn <- 0:n
+   kff <- cumprod( seq(1,(2*n+1), by=2) )
+   u <-  dnorm(x) * x^(2*nn+1) / kff
+   u
+ }
+
+# Laplace, 1812
+# Shenton, 1954, eq 16
+# R(t) = 1/[t+1/[t+2/[t+3/[t+...]]]]
+## and R(t) = (1/phi(t))*[ 1- Phi(t) ]
+
+Two <- 2
+Pi <- pi
+
+laplace.cf <- function(x,n)
+ {
+  u <- x
+  for( j in n:1 )
+   {
+    u <-  x + j/u
+   }
+  u <- 1- (1/u)*exp( -x^2/2 )/sqrt(Two*Pi) 
+  return(u)
+ }
+
+
+#
+shenton.cf <- function(x,n)
+ {
+  u <- 2*n+1
+  for( j in n:1)
+   {
+    u <-  2*j-1 + (-1)^(j) * (j) * x^2 /u
+   }
+  u <- x/u
+  u <- u*exp(-(1/2)*x^2 )/sqrt(2*pi)  + 1/2
+  u
+  }
+
+## an illustration
+
+B <- 30
+x <- 3.5
+
+
+cf1 <- numeric(B)
+cf2 <- numeric(B)
+for( i in 1:B)
+{
+   cf1[i] <- laplace.cf( x, n=i)
+   cf2[i] <- shenton.cf( x, n=i)
+}
+
+
+v1 <- taylor1(x, B-1)
+v2 <- taylor2(x, B-1)
+c1 <- cumsum(v1) 
+c2 <- cumsum(v2)
+y <- pnorm(x)  - 1/2
+
+e1 <- abs( c1-y )
+e2 <- abs( c2-y )
+f1 <- abs( cf1 - pnorm(x) )
+f2 <- abs( cf2 - pnorm(x) )
+
+u <- c(f1,f2,e1,e2)
+u[u==0] <- min( u[u>0]) ## helps log-scale plotting
+
+plot( 1:B,  e1,    col="red", type="b", log="y" , 
+		xlab="number of iterations", ylab="absolute error",
+	main="Approximating pnorm(x)", ylim=range(u), 
+       sub=paste( "x=", format(x,digits=2) ) )
+
+lines(e2,  col="blue", type="b" )
+
+legend( "bottomleft", legend=c("alternating series","positive term series","Laplace CF", "Shenton CF"),
+		 col=c("red","blue","magenta","green" ), pch=1 )
+
+lines( f1, col="magenta", type="b" )
+lines( f2, col="green", type="b" )
+
+```
+
+### Note on approximation
+
+For any of the approximations above, we have a function, say $f_B(x)$
+that converges (mathematically)
+ to the target $\Phi(x)$ as $B$ diverges.   In typical implementations, $f_B(x)$ is evaluated
+by fixed-precision arithmetic, and so the computed value may differ from the idealized value, owing to round-off error, for example, quite apart from any difference between the ideal (i.e. real) value and the  target. Our numerical experiments compared algorithms at a single value of $x$, but some sort of uniform convergence over a wide range of inputs is desired for a general-purpose tool.
+
+With `Rmpfr`, we can investigate numerical accuracy of any given sequence, though there is the question of
+what the true normal tail area number ought to be.   We might think to compute it with the high
+precision `pnorm` that accompanies `Rmpfr`, but I suspect that this output is simply a high-precision
+implementation of Cody's algorithm, and so it gives a high-precision value of $f_B(x)$ for some $B$, rather
+than a high-precision value for the target quantity.   
+
+With large enough $B$ all these approximations will converge to the ideal value, especially when evaluated
+by high-precision arithmetic.  
+
+
+```{r}
+## look at high precision upper tail probabilities
+library(Rmpfr)
+ 
+x <-  1.96
+nmax <- 100
+
+
+## Use positive term series to get a high precision answer
+## (since there's no high precision pnorm...)a
+
+pnorm.posterm.highprec <- function(x,n,pb=1000)
+ {
+   x. <- mpfr(x, precBits=pb)
+   nn <- 0:n
+   kff <- cumprod( seq(1,(2*n+1), by=2) )
+   u <-  dnorm(x.) * x.^(2*nn+1) / kff
+   u
+ }
+
+p.hp <- 1/2 - cumsum( pnorm.posterm.highprec(x,n=nmax) )
+pnorm.val <- pnorm( mpfr(x, precBits=1000), lower.tail=FALSE )  ## Chebyshev is not exact
+							## and this shows error
+
+prob.hp <- p.hp[length(p.hp)]
+hh <- pnorm.val - prob.hp ##  
+
+err.posterm <- p.hp - prob.hp 
+```
+
+This is more precise than needed for any practical purpose, but we report for interest
+a high precision calculation of $1-\Phi(1.96)$: 
+```{r}
+ print(prob.hp, digits=100)
+```
+
+The plot below shows the error dropping, as computed by the positive term expansion from above.
+(horizontal line at `pnorm` which itself does not operate in high-precision ).
+
+```{r}
+plot( 1:(nmax+1), err.posterm, log="y", xlab="iteration", ylab="absolute error", main="P_{h.p.}[ N(0,1) > 1.96 ]" )
+
+abline( h=as.double(hh))
+```
+
+
+
+### Poisson Binomials
+
+We review the so-called Poisson-Binomial distribution which is the sum of independent but
+not identically distributed Bernoulli trials; say $X_i$ has success probability $\theta_i$.  Though we can compute the joint probability of any particular realization of binary trial outcomes
+
+$$P[ X_1=x_1, X_2=x_2, \cdots, X_n=x_n] = \prod_{i=1}^n [ \theta_i^{x_i} (1-\theta_i)^{1-x_i} ] $$
+
+there's no obvious way to compute the distribution of $S_n=\sum_{i=1}^n X_i$.  At least we know
+that  for $s \in \{0,1,2, \cdots, n\}$,
+$$
+P[S_n=s] = \sum_{x \in \mathcal{X}_{n,s} } \prod_{i=1}^n [ \theta_i^{x_i} (1-\theta_i)^{1-x_i} ]
+$$
+where $\mathcal{X}_{n,s}$ is the set of all length-$n$ binary vectors containing exactly $s$ 1's.
+With non-constant $\theta_i$, this summation does not easily simplify, but we can use some tools to
+calculate for small $n$, such as:
+
+```{r}
+library(rje)
+
+n <- 9
+theta <- (1:n)/(n+1)
+
+ps <- powerSet(1:n,n)
+
+supp <- seq(0,n)
+pmf <- rep(0, n+1)
+pmf[1]  <- prod( 1-theta )  ##  chance of S=0 is chance of all 0's
+pmf[n+1]  <- prod( theta )  ##  chance of S=n is chance of all 1's
+# otherwise add up over options
+
+for( j in 2:((2^n)-1)  )  ## first set is empty
+ {
+  sb <- ps[[j]]  # subset of 1's
+  s <- length( sb )   ## 
+  ii <- rep(0,n)
+  ii[sb] <- 1
+  pmf[s+1] <- pmf[s+1] + prod( theta^ii * (1-theta)^(1-ii) )
+ }
+
+
+plot( supp, pmf, type="h", main="Poisson binomial",col="blue" )
+
+```
+
+The method above works well for small $n$ but is infeasible in many relevant examples.  Thomas
+and Taub (1982) report a beautiful **recursion** for the Poisson binomial case:
+
+[Calculating binomial probabilities when trial probabilities are unequal]](http://www.tandfonline.com/doi/abs/10.1080/00949658208810534)
+
+
+Rather than brute force enumeration, Thomas and Taub show how $P(S_n=s)$ may be
+related simply to $P(S_{n-1}=t)$.   For a given value $s$ , the only way $S_n=s$ is
+if either $S_{n-1}=s$ and $X_n=0$ or $S_{n-1}=s-1$ and $X_n=1$. This suggests a
+recursion, coded below.  A matrix is constructed, each row of which is a p.m.f. of
+a partial sum.  Each entry in a lower row is computed from at most two entries from the prior row,
+giving a computationally efficient alternative to complete enumeration.
+
+```{r echo=TRUE}
+
+poisbin <- function(theta)
+        {
+        # theta is a length k vector of success probabilities
+        # for the Bernoulli trials.  
+        k <- length(theta)
+        aa <- matrix(NA,k,k+1)
+        aa[1,1] <- 1-theta[1]
+        aa[1,2] <- theta[1]
+        for( i in 2:k )
+         {      
+          aa[i,1] <- aa[i-1,1] * (1-theta[i])
+          aa[i,i+1] <- aa[i-1,i] * theta[i]
+          aa[i,2:i] <- aa[i-1,1:(i-1)]*theta[i]+aa[i-1,2:i]*(1-theta[i])
+         }
+        return( aa[k,] )  # prob mass function on 0:k
+        }
+
+# for example
+k <- 8
+theta <- seq( .01, .6, length=k )
+pmf <- poisbin(theta)
+
+plot( 0:k, pmf, type="h", lwd=2, col="blue" )
+```
+
+Here's a more challenging example from large-scale empirical Bayes testing:
+
+```{r}
+
+library(fdrtool)
+data(pvalues)
+hist(pvalues)
+ff <- fdrtool(pvalues, statistic="pvalue", plot=FALSE )
+theta <- ff$lfdr[ff$lfdr < 0.05 ] ## we say t
+```
+
+Think of each $p-$value, from a vector of `r length(pvalues)` is testing some null hypothesis. 
+In an empirical Bayes approach, we treat the marginal distribution of $p-$values as a mixture of a uniform (null is true) and something shifted toward the origin (when the null is false).  The `fdrtool` function computesthe *local false discovery rate (lfdr)*, which is an empirically derived posterior probability that the null is true conditional on the $p-$value.   The most interesting units have smallest $p-$values; if we report a list say with *lfdr* bounded by $5 \%$, then this list of discoveries contains `r length(theta)` units.  Each reported unit may or may not constitute a type-I error.  The number of type-I errors is the sum of Bernoulli trials, but their success probabilities are not constant (they depend on the $p-$value).   Treating these
+calls as independent, the number of *false discoveries* is like $S$ above.
+
+
+```{r}
+theta <- ff$lfdr[ff$lfdr < 0.05 ] ## we say t
+
+pmf.fd <- poisbin(theta)
+
+plot( 0:length(theta), pmf.fd, type="h", lwd=2, col="blue", xlab="# false discoveries", xlim=c(0,30) )
+```
+
+
+
